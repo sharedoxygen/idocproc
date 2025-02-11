@@ -1,0 +1,18 @@
+FROM ubuntu:22.04
+
+# Install required packages
+RUN apt-get update && apt-get install -y \
+    postgresql-client \
+    imagemagick \
+    && rm -rf /var/lib/apt/lists/*
+
+WORKDIR /app
+
+# Copy seed scripts
+COPY scripts/seed /app/scripts/seed
+
+# Make scripts executable
+RUN chmod +x /app/scripts/seed/*.sh \
+    && chmod +x /app/scripts/seed/documents/*.sh
+
+CMD ["/app/scripts/seed/load.sh"] 

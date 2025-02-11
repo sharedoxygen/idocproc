@@ -1,0 +1,57 @@
+pipeline {
+  agent any
+  
+  environment {
+    DOCKER_REGISTRY = credentials('docker-registry')
+    AWS_CREDS = credentials('aws-creds')
+  }
+
+  stages {
+    stage('Build') {
+      steps {
+        sh 'docker-compose build --parallel'
+      }
+    }
+    
+    stage('Test') {
+      parallel {
+        stage('Unit Tests') {
+          steps {
+            sh 'docker-compose run backend pytest tests/unit'
+          }
+        }
+        stage('Integration Tests') {
+          steps {
+            sh 'docker-compose run backend pytest tests/integration'
+          }
+        }
+      }
+    }
+    
+    stage('Security Scan') {
+      steps {
+        sh 'trivy config --exit-code 1 ./'
+        sh 'trivy image --exit-code 1 backend:latest'
+      }
+    }
+    
+    stage('Deploy to Staging') {
+      when {
+        branch 'main'
+      }
+      steps {
+        script {
+          awsUpdateEks('idocproc-staging')
+          helmUpgrade('idocproc', './deployments/helm')
+        }
+      }
+    }
+  }
+  
+  post {
+    always {
+      archiveArtifacts artifacts: '**/test-reports/*.xml'
+      cleanWs()
+    }
+  }
+} 

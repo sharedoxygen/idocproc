@@ -1,0 +1,85 @@
+version: '3.8'
+
+x-common-variables: &common-variables
+  ENVIRONMENT: ${ENVIRONMENT:-dev}
+  DB_HOST: ${DB_HOST:-localhost}
+  DB_PORT: ${DB_PORT:-5432}
+  DB_NAME: ${DB_NAME:-idocproc}
+  DB_USER: ${DB_USER:-admin}
+  DB_PASSWORD: ${DB_PASSWORD:-development_password}
+  DB_SSL: ${DB_SSL:-false}
+
+services:
+  backend:
+    build: 
+      context: ../backend
+      dockerfile: Dockerfile
+      args:
+        ENVIRONMENT: ${ENVIRONMENT:-dev}
+    ports:
+      - "${BACKEND_PORT:-8085}:8085"
+    environment:
+      <<: *common-variables
+    volumes:
+      - ../backend:/app
+      - backend_venv:/app/venv
+    depends_on:
+      - db
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8085/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+
+  frontend:
+    build:
+      context: ../frontend
+      dockerfile: Dockerfile
+      args:
+        ENVIRONMENT: ${ENVIRONMENT:-dev}
+    ports:
+      - "${FRONTEND_PORT:-3000}:3000"
+    environment:
+      NODE_ENV: ${ENVIRONMENT:-dev}
+      VITE_API_URL: ${VITE_API_URL:-http://localhost:8085}
+      VITE_DEV_SERVER_HOST: "0.0.0.0"
+    volumes:
+      - ../frontend:/app
+      - /app/node_modules
+    depends_on:
+      - backend
+
+  db:
+    image: postgres:14-alpine
+    environment:
+      POSTGRES_USER: ${DB_USER:-admin}
+      POSTGRES_PASSWORD: ${DB_PASSWORD:-development_password}
+      POSTGRES_DB: ${DB_NAME:-idocproc}
+    ports:
+      - "${DB_PORT:-5432}:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${DB_USER:-admin} -d ${DB_NAME:-idocproc}"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  seeder:
+    build:
+      context: ..
+      dockerfile: services/Dockerfile.seeder
+    environment:
+      <<: *common-variables
+    volumes:
+      - ../data:/app/data
+      - ../scripts:/app/scripts
+    depends_on:
+      db:
+        condition: service_healthy
+    profiles:
+      - seed
+
+volumes:
+  postgres_data:
+  backend_venv:
